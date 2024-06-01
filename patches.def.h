@@ -34,7 +34,7 @@
 /* This patch centers dmenu in the middle of the screen.
  * https://tools.suckless.org/dmenu/patches/center/
  */
-#define CENTER_PATCH 0
+#define CENTER_PATCH 1
 
 /* Minor patch to enable the use of Ctrl+v (XA_PRIMARY) and Ctrl+Shift+v (CLIPBOARD) to paste.
  * By default dmenu only supports Ctrl+y and Ctrl+Shift+y to paste.
@@ -67,7 +67,7 @@
  * portions of the string to be matched.
  * https://tools.suckless.org/dmenu/patches/fuzzymatch/
  */
-#define FUZZYMATCH_PATCH 0
+#define FUZZYMATCH_PATCH 1
 
 /* Adds fzf-like functionality for dmenu.
  * Refer to https://github.com/DAFF0D11/dafmenu/ for documentation and example use cases.
@@ -119,7 +119,7 @@
  * integrate dmenu with other UI elements that require a particular vertical size.
  * http://tools.suckless.org/dmenu/patches/line-height/
  */
-#define LINE_HEIGHT_PATCH 0
+#define LINE_HEIGHT_PATCH 1
 
 /* This patch adds a -wm flag which sets override_redirect to false; thus letting your window
  * manager manage the dmenu window.
@@ -175,7 +175,7 @@
  * substring matches.
  * https://tools.suckless.org/dmenu/patches/no-sort/
  */
-#define NO_SORT_PATCH 0
+#define NO_SORT_PATCH 1
 
 /* This is a patch to have dmenu read stdin in a non blocking way, making it wait for input both
  * from stdin and from X. This means that you can continue feeding dmenu while you type.
@@ -306,7 +306,7 @@
  * the TSV patch.
  * https://tools.suckless.org/dmenu/patches/separator/
  */
-#define SEPARATOR_PATCH 0
+#define SEPARATOR_PATCH 1
 
 /* This patch allows the symbols, which are printed in dmenu to indicate that either the input
  * is too long or there are too many options to be shown in dmenu in one line, to be defined.
