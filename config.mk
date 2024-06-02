@@ -19,8 +19,8 @@ FREETYPEINC = /usr/include/freetype2
 #FREETYPEINC = $(X11INC)/freetype2
 #MANPREFIX = ${PREFIX}/man
 
-# uncomment on RHEL for strcasecmp
-#EXTRAFLAGS=-D_GNU_SOURCE
+# uncomment on RHEL for strcasecmp or for QALC_PATCH
+EXTRAFLAGS=-D_GNU_SOURCE
 
 # Uncomment this for the alpha patch / ALPHA_PATCH
 XRENDER = -lXrender

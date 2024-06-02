@@ -7,6 +7,11 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/prctl.h>
+#include <sys/select.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -99,6 +104,12 @@ struct item {
 	int index;
 	#endif // PRINTINDEX_PATCH
 };
+
+static struct {
+  pid_t pid;
+  int enable, in[2], out[2];
+  char buf[256];
+} qalc;
 
 static char text[BUFSIZ] = "";
 #if PIPEOUT_PATCH
@@ -743,9 +754,88 @@ grabkeyboard(void)
 	die("cannot grab keyboard");
 }
 
+#if QALC_PATCH
+
+static void
+init_qalc(void)
+{
+  pipe(qalc.in);
+  pipe2(qalc.out, O_NONBLOCK);
+  qalc.pid = fork();
+  if (qalc.pid == -1)
+    die("failed to fork for qalc");
+  if (qalc.pid == 0) {
+    dup2(qalc.in[0], STDIN_FILENO);
+    dup2(qalc.out[1], STDOUT_FILENO);
+    close(qalc.in[1]);
+    close(qalc.out[0]);
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
+    execlp("qalc", "qalc", "-c0", "-t", NULL);
+    die ("execl qalc failed");
+  } else { // parent
+    close(qalc.in[0]);
+    close(qalc.out[1]);
+    items = malloc(sizeof(struct item)*2);
+    items[0].text = malloc(LENGTH(qalc.buf));
+    strcpy(items[0].text, "no result");
+    items[1].out = 0;
+    items[1].text = NULL;
+  }
+}
+
+static void
+recv_qalc(void)
+{
+  ssize_t r = read(qalc.out[0], qalc.buf, LENGTH(qalc.buf));
+
+  if (r < 0)
+    die("error reading qalc.out");
+
+  if (qalc.buf[0] == '\n') {
+    int i;
+    for (i = 3; i < LENGTH(qalc.buf) && qalc.buf[i] != '\n'; ++i)
+      items[0].text[i-3] = qalc.buf[i];
+    items[0].text[i-3] = 0;
+    if (r != LENGTH(qalc.buf))
+      return;
+  }
+
+  while (read(qalc.out[0], qalc.buf, LENGTH(qalc.buf)) != -1)
+    ; // empty the pipe
+  if (errno != EAGAIN && errno != EWOULDBLOCK)
+    die("error emptying qalc.out");
+}
+
+static void
+send_qalc(void)
+{
+  int s = strlen(text);
+  text[s] = '\n';
+  write(qalc.in[1], text, s+1);
+  text[s] = 0;
+}
+
+static void
+match_qalc(void)
+{
+  matches = matchend = NULL;
+  appenditem(items, &matches, &matchend);
+  curr = sel = matches;
+  calcoffsets();
+}
+
+#endif // QALC_PATCH
+
 static void
 match(void)
 {
+    #if QALC_PATCH
+    if (qalc.enable) {
+        match_qalc();
+        return;
+    }
+    #endif // QALC_PATCH
+
 	#if DYNAMIC_OPTIONS_PATCH
 	if (dynamic && *dynamic)
 		refreshoptions();
@@ -1265,7 +1355,12 @@ insert:
 			puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
 			#endif // SEPARATOR_PATCH
 		#elif SEPARATOR_PATCH
-		puts((sel && !(ev->state & ShiftMask)) ? sel->text_output : text);
+        #if QALC_PATCH
+            if (qalc.enable)
+                puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
+            else
+        #endif
+            puts((sel && !(ev->state & ShiftMask)) ? sel->text_output : text);
 		#else
 		puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
 		#endif // PIPEOUT_PATCH | PRINTINPUTTEXT_PATCH | PRINTINDEX_PATCH
@@ -1352,6 +1447,11 @@ insert:
 		#endif // PREFIXCOMPLETION_PATCH
 		break;
 	}
+
+#if QALC_PATCH
+    if (qalc.enable)
+        send_qalc();
+#endif // QALC_PATCH
 
 draw:
 	#if INCREMENTAL_PATCH
@@ -1507,7 +1607,24 @@ run(void)
 	int i;
 	#endif // PRESELECT_PATCH
 
+#if QALC_PATCH
+  fd_set rfds;
+  int xfd = ConnectionNumber(dpy);
+
+  for (;;) {
+    FD_ZERO(&rfds);
+    FD_SET(xfd, &rfds);
+    FD_SET(qalc.out[0], &rfds);
+
+    if (select(MAX(xfd, qalc.out[0])+1, &rfds, NULL, NULL, NULL) > 0) {
+      if (qalc.enable && FD_ISSET(qalc.out[0], &rfds)) {
+        recv_qalc();
+        drawmenu();
+      }
+      while (XPending(dpy) && !XNextEvent(dpy, &ev)) {
+#else
 	while (!XNextEvent(dpy, &ev)) {
+#endif // QALC_PATCH
 		#if PRESELECT_PATCH
 		if (preselected) {
 			for (i = 0; i < preselected; i++) {
@@ -1555,6 +1672,9 @@ run(void)
 			break;
 		}
 	}
+#if QALC_PATCH
+      }}
+#endif // QALC_PATCH
 }
 
 static void
@@ -1848,6 +1968,9 @@ usage(void)
 		#if RESTRICT_RETURN_PATCH
 		"1"
 		#endif // RESTRICT_RETURN_PATCH
+        #if QALC_PATCH
+        "C"
+        #endif
 		"] "
 		#if CARET_WIDTH_PATCH
 		"[-cw caret_width] "
@@ -1955,6 +2078,10 @@ main(int argc, char *argv[])
 			exit(0);
 		} else if (!strcmp(argv[i], "-b")) { /* appears at the bottom of the screen */
 			topbar = 0;
+        #if QALC_PATCH
+        } else if (!strcmp(argv[i], "-C")) { /* grabs keyboard before reading stdin */
+            qalc.enable = 1;
+        #endif // QALC_PATCH
 		#if CENTER_PATCH
 		} else if (!strcmp(argv[i], "-c")) { /* toggles centering of dmenu window on screen */
 			center = !center;
@@ -2194,6 +2321,12 @@ main(int argc, char *argv[])
 	#if NON_BLOCKING_STDIN_PATCH
 	grabkeyboard();
 	#else
+    #if QALC_PATCH
+    if (qalc.enable) {
+        init_qalc();
+        grabkeyboard();
+    } else {
+    #endif
 	if (fast && !isatty(0)) {
 		grabkeyboard();
 		#if DYNAMIC_OPTIONS_PATCH
@@ -2212,6 +2345,9 @@ main(int argc, char *argv[])
 		grabkeyboard();
 	}
 	#endif // NON_BLOCKING_STDIN_PATCH
+    #if QALC_PATCH
+    }
+    #endif // QALC_PATCH
 	setup();
 	run();
 

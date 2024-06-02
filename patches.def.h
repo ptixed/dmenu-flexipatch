@@ -128,7 +128,7 @@
  * treat dmenu more as a "window" rather than as an overlay.
  * https://tools.suckless.org/dmenu/patches/managed/
  */
-#define MANAGED_PATCH 0
+#define MANAGED_PATCH 1
 
 /* This patch adds an additional color scheme for highlighting entries adjacent to the current
  * selection.
@@ -193,6 +193,11 @@
  * https://tools.suckless.org/dmenu/patches/numbers/
  */
 #define NUMBERS_PATCH 0
+
+/* This patch adds an additional flag to dmenu, -C, which turns the app into a calculator, à la rofi-calc.
+ * https://tools.suckless.org/dmenu/patches/qalc/
+ */
+#define QALC_PATCH 1
 
 /* This patch adds simple markup for dmenu using pango markup.
  * This depends on the pango library v1.44 or greater.
